@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Comparing NCAAF Team Stats</title>
+<style type="text/css">
+
+	/*add style elements*/
+
+	#teamSelect1 { position: absolute; left: 50px; top: 35px; }
+	#teamSelect2 { position: absolute; left: 50px; top: 75px; }
+
+
+</style>
+<!-- Body tag is where we will append our SVG and SVG objects-->
+<body>
+<div id = "teamSelect1"></div>
+<div id= "teamSelect2"></div>
+
+</body>
+
+<!-- Load in the d3 library -->
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<script>
+
+// Define the dimensions and margins for the graph
+	
+var margin = {top: 40, right: 40, bottom: 40, left: 250},
+    	width = 1600 - margin.left - margin.right,
+    	height = 750 - margin.top - margin.bottom;
+
+
+//Read in the data (autoType can be used as we have string and number columns)
+var pathToCsv = "passingyds.csv";
+
+var data = d3.csv(pathToCsv,d3.autoType).then(function (data) {
+	console.log(data);
+// Log data to see it in developer console
+
+
+
+//Create a list of all team names using a for loop. These will be the values for the dropdown menu
+//
+
+	//Date range - this is "given" for this dataset, and will not change
+	var date_range = [2010,2011,2012,2013,2014,2015,2016];
+	var xpadding = 10
+
+	//X axis scale will be constant. Ok to hard code it here
+	var xAxisScale = d3.scalePoint()
+			.domain(date_range)
+			.range([xpadding,width-200]);
+
+	var teamsList = [];
+	for (i =0; i < data.length; i++) {
+		teamsList.push(data[i].team);
+	}
+
+
+// Add a dropdown for selecting team1 1. A default value will also be set
+	var dropdown1 = d3.select("#teamSelect1")
+	dropdown1.append("select")
+			.selectAll("option")
+			.data(teamsList)
+			.enter().append("option")
+			.text(function(d) { return d; })
+			.attr("value", function (d) { return d; })
+			.property("selected", function(d){ return d === "Georgia"; });
+
+// Add a dropdown for selecting team 2. A default value will also be set
+	var dropdown2 = d3.select("#teamSelect2")
+	dropdown2.append("select")
+			.selectAll("option")
+			.data(teamsList)
+			.enter().append("option")
+			.text(function(d) { return d; })
+			.attr("value", function (d) { return d; })
+			.property("selected", function(d){ return d === "Auburn"; });
+
+	var popup = d3.select("body")
+        .append("div")
+        .style("opacity", 0)
+        .attr("class", "tooltip")
+		.style("background-color", "white")
+		.style("border", "solid")
+		.style("border-width", "1px")
+		.style("padding", "5px")
+
+
+
+
+            //Function to filter data into a usable format (a map of year to stat value) ie: 2014 - 265.3 yds
+	function filterDataByTeam(teamName){
+
+		var team1_values = data.filter(function(d){ return d.team == teamName });
+
+		var t1_vals_intermediate = team1_values.map(Object.values)[0].slice(1,8);
+
+		var team1_data_final = []; // start empty, add each element one at a time to create a full dataframe
+		for(i = 0; i < date_range.length; i++ ) {
+			team1_data_final.push({year: date_range[i], val: t1_vals_intermediate[i]});
+		}
+		return team1_data_final;
+	}
+
+   //Function that finds the maximum value of the stat between both teams selected.
+	function getMaxValueBetweenTeams(team1, team2){
+		var team1_values = data.filter(function(d){ return d.team == team1 });
+		var t1_vals_intermediate = team1_values.map(Object.values)[0].slice(1,8);
+
+		var team2_values = data.filter(function(d){ return d.team == team2 });
+		var t2_vals_intermediate = team2_values.map(Object.values)[0].slice(1,8);
+
+		var final_array = t1_vals_intermediate.concat(t2_vals_intermediate);
+
+		var max_between_teams = d3.max(final_array)
+
+		return max_between_teams
+
+	}
+
+
+	updateChart("Georgia","Auburn");
+
+
+	// A function that updates the chart. This will be triggered any time the dropdown menu is changed.
+
+	function updateChart(selectedTeam1, selectedTeam2) {
+		//Add the svg object.
+		var svg1 = d3.select("body").append("svg")
+				.attr("width", width + margin.left + margin.right)
+				.attr("height", height + margin.top + margin.bottom)
+				.append("g")
+				.attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+
+		// Filter to the data for each selected team
+		var TeamData1 = filterDataByTeam(selectedTeam1);
+		var TeamData2 = filterDataByTeam(selectedTeam2);
+
+		//Get highest value across both teams and increase 10%, this will be the height of the y axis
+		var maxValue = getMaxValueBetweenTeams(selectedTeam1,selectedTeam2)*1.1
+
+
+		var yAxisScale = d3.scaleLinear()
+				.domain([0, maxValue]) //Set the y axis scale to the max value
+				.range([height,0]);
+
+
+		//Use these new data to add dots
+		svg1.selectAll("dot")
+				.data(TeamData1)
+				.enter().append("circle")
+				.attr("r", 6)
+				.attr('fill', "red")
+				.attr("cx", function (d) {
+					return xAxisScale(d.year);
+				})
+				.attr("cy", function (d) {
+                    return yAxisScale(d.val)
+                })
+            .on("mouseover", function(d) {
+				d3.select(this).attr("r",12)
+				popup.html("Year: " + d.year + "<br/>"  +  "Passing yards: " + d.val)
+				.style("left", (d3.event.pageX + 50) + "px")
+				.style("top", (d3.event.pageY - 50) + "px").style("opacity", .9)
+				.style("position", "absolute")
+				.style("opacity", .9);
+            })
+
+
+            .on("mouseout", function(d) {
+				popup.style("opacity", 0);
+				d3.select(this).attr("r",6)
+            });
+
+        //Connect dots with a line based on the data
+		var line1 = svg1.append('g')
+				.append("path")
+				.data([TeamData1])
+				.attr("d", d3.line()
+						.x(function (d) {
+							return xAxisScale(+d.year)
+						})
+						.y(function (d) {
+							return yAxisScale(+d.val)
+						})
+				)
+				.attr("stroke", "red")
+				.style("stroke-width", 4)
+				.style("fill", "none");
+
+        //Repeat the above steps for the second team data
+		svg1.selectAll("dot")
+				.data(TeamData2)
+				.enter().append("circle")
+				.attr("r", 6)
+				.attr('fill', "blue")
+				.attr("cx", function (d) {
+					return xAxisScale(d.year);
+				})
+				.attr("cy", function (d) {
+					return yAxisScale(d.val);
+				})
+
+            .on("mouseover", function(d) {
+				d3.select(this).attr("r",12)
+            	popup.html("Year: " + d.year + "<br/>"  +  "Passing yards: " + d.val)
+                    .style("left", (d3.event.pageX + 50) + "px")
+                    .style("top", (d3.event.pageY - 50) + "px")
+                    .style("opacity", .9);
+            })
+
+            .on("mouseout", function(d) {
+				d3.select(this).attr("r",6)
+                popup.style("opacity", 0);
+            });
+
+
+        var line2 = svg1.append('g')
+				.append("path")
+				.data([TeamData2])
+				.attr("d", d3.line()
+						.x(function (d) {
+							return xAxisScale(+d.year)
+						})
+						.y(function (d) {
+							return yAxisScale(+d.val)
+						})
+				)
+				.attr("stroke", "blue")
+				.style("stroke-width", 4)
+				.style("fill", "none");
+
+
+
+		var yAxis = d3.axisLeft()
+				.scale(yAxisScale).ticks(10);
+
+		var xAxis = d3.axisBottom()
+				.scale(xAxisScale).ticks();
+
+
+		svg1.append("g")
+				.attr("class","axis")
+				.call(yAxis); // Create the y axis
+
+		svg1.append("g")
+				.attr("class","axis")
+				.attr("transform", "translate(0,670)")
+				.call(xAxis); // Create the x axis
+
+		svg1.append("text")
+				.attr("x",width/2 )
+				.attr("y",height + margin.bottom)
+				.style("text-anchor","middle")
+				.text("Year");
+
+		svg1.append("text").attr("transform", "rotate(-90)")
+				.attr("x",0 - margin.left - 50)
+				.attr("y", 0 - margin.top - 25)
+				.style("text-anchor","middle")
+				.text("Avg. Passing Yards/Game");
+
+		// add legend
+
+		svg1.append("rect").attr("x",width - 150).attr("y",height/2 - 60).attr("width", 10).attr("height", 10).style("fill", "red")
+		svg1.append("text").attr("x", width - 125).attr("y", height/2 - 50).text(selectedTeam1)
+					.style("font-size", "15px").style("font-weight","bold").attr("alignment-baseline","middle")
+
+		svg1.append("rect").attr("x",width - 150).attr("y",height/2).attr("width", 10).attr("height", 10).style("fill", "blue")
+		svg1.append("text").attr("x", width - 125).attr("y", height/2 + 10).text(selectedTeam2)
+				.style("font-size", "15px").style("font-weight","bold").attr("alignment-baseline","middle")
+
+	}
+
+
+
+
+
+
+	//Change data based on the selection for team 1
+	dropdown1.on('change', function(){
+
+		var newTeam = d3.select(this)
+				.select("select")
+				.property("value")
+
+		var oldTeam = d3.select("#teamSelect2").select("select").property("value");
+
+		d3.selectAll("svg").remove();
+
+		updateChart(newTeam,oldTeam)
+
+	});
+	//Change data based on the selection for team 1
+	dropdown2.on('change', function(){
+
+		var newTeam = d3.select(this)
+				.select("select")
+				.property("value")
+
+		var oldTeam = d3.select("#teamSelect1").select("select").property("value");
+
+		d3.selectAll("svg").remove();
+
+		updateChart(oldTeam,newTeam)
+
+	});
+
+
+
+
+    }).catch(function (error) {
+      console.log(error);
+    });
+
+
+
+	</script>
+</body>
